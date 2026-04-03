@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# Comrash — Soviet-themed wrapper: execs your real shell (bash / zsh / fish) with full features.
+
+# Resolve real directory so a symlink in ~/.local/bin still finds comrash.bashrc etc.
+_comrash_self="${BASH_SOURCE[0]}"
+if command -v readlink >/dev/null 2>&1; then
+	if _rp="$(readlink -f "$_comrash_self" 2>/dev/null)"; then
+		_comrash_self="$_rp"
+	fi
+fi
+COMRASH_ROOT="$(cd "$(dirname "$_comrash_self")" && pwd)"
+export COMRASH_ROOT
+PATH="$COMRASH_ROOT${PATH:+:$PATH}"
+export PATH
+unset _comrash_self _rp
+
+R=$'\033[31m'
+G=$'\033[33m'
+D=$'\033[90m'
+B=$'\033[1m'
+X=$'\033[0m'
+
+_mottos=(
+	"From each according to ability, to each according to need."
+	"Workers of the world, unite!"
+	"The future belongs to those who build it."
+	"No exploiters on this terminal."
+	"All power to the soviets of code."
+	"Debug twice, deploy once — for the Motherland."
+)
+
+_comrash_banner() {
+	if [[ -t 1 ]]; then
+		clear 2>/dev/null || true
+	fi
+	local i=$((RANDOM % ${#_mottos[@]}))
+	local motto="${_mottos[i]}"
+	printf '%b\n' "${R}${B}  ╔══════════════════════════════════════════════════╗"
+	printf '%b\n' "  ║  ${G}К О М Р А Ш${R}  —  ${G}COMRASH${R}  Soviet Linux Shell      ║"
+	printf '  ║  %s%-46s%s  ║\n' "$D" "$motto" "$R"
+	printf '%b\n' "  ╚══════════════════════════════════════════════════╝${X}"
+	printf '%b\n\n' "${G}Full shell (bash/zsh/fish). ${B}exit${G} when the shift ends.${X}"
+}
+
+pick_shell() {
+	local raw="${1:-}"
+	if [[ -n "$raw" && -x "$raw" ]]; then
+		printf '%s\n' "$raw"
+		return
+	fi
+	raw="${COMRASH_SHELL:-${SHELL:-}}"
+	if [[ -n "$raw" && -x "$raw" ]]; then
+		printf '%s\n' "$raw"
+		return
+	fi
+	if [[ -x /bin/bash ]]; then
+		printf '%s\n' /bin/bash
+		return
+	fi
+	if command -v bash >/dev/null 2>&1; then
+		command -v bash
+		return
+	fi
+	printf '%s\n' /bin/sh
+}
+
+_comrash_banner
+
+TARGET="$(pick_shell "${1:-}")"
+BASE="$(basename "$TARGET")"
+
+if [[ -z "${COMRASH_NO_COMRADEFETCH:-}" && -x "$COMRASH_ROOT/comradefetch" ]]; then
+	"$COMRASH_ROOT/comradefetch" "$TARGET"
+fi
+
+case "$BASE" in
+fish)
+	exec "$TARGET" -C "source '$COMRASH_ROOT/comrash.fish'" -i
+	;;
+zsh)
+	export ZDOTDIR="$COMRASH_ROOT/zdotdir"
+	exec "$TARGET" -i
+	;;
+bash)
+	exec "$TARGET" --rcfile "$COMRASH_ROOT/comrash.bashrc" -i
+	;;
+sh | dash)
+	# Debian /bin/sh etc.: use bash for readline, job control, and your usual ~/.bashrc path
+	if [[ -x /bin/bash ]]; then
+		exec /bin/bash --rcfile "$COMRASH_ROOT/comrash.bashrc" -i
+	fi
+	exec "$TARGET" -i
+	;;
+*)
+	printf '%b\n' "${R}Comrash theme is wired for bash, zsh, and fish.${X}" >&2
+	printf '%b\n' "${D}Starting your shell as-is: ${TARGET}${X}" >&2
+	exec "$TARGET" -i 2>/dev/null || exec "$TARGET"
+	;;
+esac
